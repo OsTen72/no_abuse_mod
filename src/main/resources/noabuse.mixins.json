@@ -1,0 +1,13 @@
+{
+  "required": true,
+  "package": "com.mamaika.noabuse.mixin",
+  "compatibilityLevel": "JAVA_17",
+  "mixins": [
+    "TotemMixin",
+    "EyeOfEnderMixin"
+  ],
+  "client": [],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}
