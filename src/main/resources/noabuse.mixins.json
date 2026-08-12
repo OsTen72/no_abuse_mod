@@ -3,7 +3,8 @@
   "package": "com.mamaika.noabuse.mixin",
   "compatibilityLevel": "JAVA_17",
   "mixins": [
-    "TotemMixin"
+    "TotemMixin",
+    "EyeOfEnderMixin"
   ],
   "client": [],
   "injectors": {

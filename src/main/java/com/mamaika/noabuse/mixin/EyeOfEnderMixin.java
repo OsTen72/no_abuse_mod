@@ -6,23 +6,25 @@ import org.spongepowered.asm.mixin.injection.Constant;
 import org.spongepowered.asm.mixin.injection.ModifyConstant;
 
 /**
- * Ваниль: брошенное на поиск крепости око эндера имеет 20% шанс разбиться
- * (константа 0.2F в tick()), 80% — падает и его можно подобрать. Это НЕ
- * относится к оку, которое ставится в портал — там другой код (использование
- * предмета по блоку), этот миксин его не трогает.
+ * Ваниль (подтверждено официальным маппингом Yarn, метод method_7478 =
+ * initTargetPos(BlockPos), и историческим исходником старой EntityEnderSignal,
+ * где та же логика называлась "a(double, int, double)"):
  *
- * Наша версия: шанс разбиться делаем гарантированным (100%), так что каждый
- * бросок "на поиск" тратит око безвозвратно, а не по рандому.
+ *   this.survives = this.random.nextInt(5) > 0;
  *
- * РИСК: если Yarn 1.20.1 назвал метод/константу иначе, чем tick()/0.2F,
- * Mixin выдаст явную ошибку при старте игры ("Constant not found") —
- * пришли мне текст, поправлю.
+ * То есть шанс разбиться — 1 из 5 (20%), задаётся ОДИН РАЗ в момент броска
+ * на поиск крепости, внутри initTargetPos(BlockPos) — а не в tick(), как я
+ * ошибочно предполагал в первой версии (отсюда и краш).
+ *
+ * Наша версия: подменяем константу 5 на 1. nextInt(1) всегда возвращает 0,
+ * а "0 > 0" всегда false — то есть "survives" всегда false, и око бьётся
+ * гарантированно. На портал это не влияет — там другой метод/код.
  */
 @Mixin(EyeOfEnderEntity.class)
 public class EyeOfEnderMixin {
 
-    @ModifyConstant(method = "tick", constant = @Constant(floatValue = 0.2F))
-    private float noabuse$alwaysShatter(float original) {
-        return 1.0F;
+    @ModifyConstant(method = "initTargetPos", constant = @Constant(intValue = 5))
+    private int noabuse$alwaysShatter(int original) {
+        return 1;
     }
 }
