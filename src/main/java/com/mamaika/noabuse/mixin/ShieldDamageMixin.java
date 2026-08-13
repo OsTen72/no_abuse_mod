@@ -13,9 +13,9 @@ import org.spongepowered.asm.mixin.injection.ModifyVariable;
  * Это ровно тот метод, который ваниль вызывает для расчёта потери
  * прочности щита при УСПЕШНОМ блоке — неважно, чем били: мобом, игроком,
  * стрелой, файерболом и т.д. Один параметр "amount" — сколько прочности
- * снять. Просто удваиваем его на входе через @ModifyVariable (это
- * штатный способ Mixin поменять значение параметра метода, в отличие от
- * @Inject, где CallbackInfo не даёт менять входные аргументы).
+ * снять. Утраиваем его на входе через @ModifyVariable (это штатный
+ * способ Mixin поменять значение параметра метода, в отличие от @Inject,
+ * где CallbackInfo не даёт менять входные аргументы).
  *
  * Взамен снятой прошлой версии (ShieldFireMixin с DoT только на
  * ифрита/гаста) — тут всё сразу и для всех, без разбора по мобам/классам
@@ -25,7 +25,7 @@ import org.spongepowered.asm.mixin.injection.ModifyVariable;
 public abstract class ShieldDamageMixin {
 
     @ModifyVariable(method = "damageShield", at = @At("HEAD"), argsOnly = true)
-    private float noabuse$doubleShieldDamage(float amount) {
-        return amount * 2.0f;
+    private float noabuse$tripleShieldDamage(float amount) {
+        return amount * 3.0f;
     }
 }
