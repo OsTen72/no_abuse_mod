@@ -5,6 +5,8 @@ import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.damage.DamageSource;
 import net.minecraft.entity.projectile.FireballEntity;
 import net.minecraft.entity.projectile.SmallFireballEntity;
+import net.minecraft.item.ItemStack;
+import net.minecraft.util.Hand;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
@@ -17,12 +19,15 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
  * (yarn_mappings=1.20.1+build.10, ветка FabricMC/yarn, коммит 9672e1f) —
  * не по памяти:
  *
- *   LivingEntity#blockedByShield(DamageSource): boolean   (method_6061)
- *   DamageSource#getSource(): Entity                      (method_5526)
- *   Entity#getDamageSources(): DamageSources               (method_48923)
- *   DamageSources#onFire(): DamageSource                   (method_48813)
- *   LivingEntity#getMaxHealth(): float                     (method_6063)
- *   LivingEntity#tickMovement(): void                      (method_6007)
+ *   LivingEntity#blockedByShield(DamageSource): boolean        (method_6061)
+ *   LivingEntity#getActiveItem(): ItemStack                    (method_6030)
+ *   LivingEntity#getActiveHand(): Hand                         (method_6058)
+ *   LivingEntity#sendToolBreakStatus(Hand): void                (method_20236)
+ *   LivingEntity#tickMovement(): void                          (method_6007)
+ *   DamageSource#getSource(): Entity                           (method_5526)
+ *   ItemStack#damage(int, LivingEntity, Consumer<LivingEntity>) (method_7956)
+ *   ItemStack#getMaxDamage(): int                              (method_7936)
+ *   ItemStack#isEmpty(): boolean                                (method_7960)
  *
  * ВАЖНО: LivingEntity НЕ переопределяет tick()/baseTick() — оба объявлены
  * только в Entity. Инжект в "tick" на @Mixin(LivingEntity.class) упал бы
@@ -33,19 +38,23 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
  * Ваниль: и ифрит (SmallFireballEntity), и гаст (FireballEntity) шлют урон
  * с одним и тем же DamageTypes.FIREBALL — по типу их не различить.
  * Различаем по точному классу объекта-снаряда, который лежит в
- * DamageSource#getSource() (см. DamageSources#fireball(AbstractFireballEntity
- * source, Entity attacker) — оба snarяда наследуют AbstractFireballEntity,
- * но сами классы разные и не наследуют друг друга).
+ * DamageSource#getSource() (оба наследуют AbstractFireballEntity, но сами
+ * классы разные и не наследуют друг друга).
  *
  * Наша версия: если блок щитом сработал (blockedByShield == true) и
- * источник — фаербол ифрита или гаста, вешаем счётчик кастомного DoT:
- * 1% от maxHealth в секунду, 3 сек для ифрита / 10 сек для гаста.
+ * источник — фаербол ифрита или гаста, ПОВЕРХ ванильных ~6 прочности за
+ * блок (эту часть не трогаем, она отрабатывает своим путём где-то ещё в
+ * damage()) вешаем счётчик кастомного DoT на прочность щита: 1% от
+ * getMaxDamage() щита в секунду, 3 сек для ифрита / 10 сек для гаста.
  *
- * Сознательно НЕ вызываем setOnFireFor() — ванильный тик горения бьёт тем
- * же DamageSources#onFire(), которым бьём мы, и даёт фиксированный урон
- * (обычно 1 хп/сек), который на 20 хп — это уже 5%/сек, то есть полностью
- * забивает наш задуманный 1%/сек. Если нужен визуальный поджиг поверх —
- * это отдельная доработка (плюс подавление ванильного тика урона).
+ * ItemStack#damage(int, ...) принимает int, поэтому 1% от maxDamage
+ * округляется (Math.round), с гарантией минимум 1 прочности за тик, чтобы
+ * эффект не обнулился на предметах с маленьким maxDamage.
+ *
+ * Держим прямую ссылку на объект ItemStack щита (не спрашиваем
+ * getActiveItem() заново каждый тик) — если игрок отпустит ПКМ раньше, чем
+ * закончится наш DoT, добиваем именно тот стак, которым блокировали, а не
+ * то, что у него в руке прямо сейчас.
  */
 @Mixin(LivingEntity.class)
 public abstract class ShieldFireMixin {
@@ -57,7 +66,13 @@ public abstract class ShieldFireMixin {
     private int noabuse$burnTickCounter = 0;
 
     @Unique
-    private float noabuse$burnDamagePerSecond = 0f;
+    private int noabuse$burnDamagePerSecond = 0;
+
+    @Unique
+    private ItemStack noabuse$burnShieldStack = null;
+
+    @Unique
+    private Hand noabuse$burnHand = null;
 
     @Inject(method = "blockedByShield", at = @At("RETURN"))
     private void noabuse$onShieldBlock(DamageSource source, CallbackInfoReturnable<Boolean> cir) {
@@ -81,9 +96,16 @@ public abstract class ShieldFireMixin {
 
         LivingEntity self = (LivingEntity) (Object) this;
 
+        ItemStack activeStack = self.getActiveItem();
+        if (activeStack == null || activeStack.isEmpty()) {
+            return; // подстраховка, в теории сюда не попадём раз блок сработал
+        }
+
         noabuse$burnSecondsRemaining = seconds;
         noabuse$burnTickCounter = 0;
-        noabuse$burnDamagePerSecond = self.getMaxHealth() * 0.01f;
+        noabuse$burnShieldStack = activeStack;
+        noabuse$burnHand = self.getActiveHand();
+        noabuse$burnDamagePerSecond = Math.max(1, Math.round(activeStack.getMaxDamage() * 0.01f));
     }
 
     @Inject(method = "tickMovement", at = @At("HEAD"))
@@ -94,8 +116,8 @@ public abstract class ShieldFireMixin {
 
         LivingEntity self = (LivingEntity) (Object) this;
 
-        // считаем урон только на сервере — на клиенте это привело бы
-        // к бессмысленным вызовам damage() без сетевой синхронизации
+        // считаем урон прочности только на сервере — на клиенте это привело
+        // бы к рассинхрону визуальной прочности с реальной
         if (self.getWorld().isClient) {
             return;
         }
@@ -107,6 +129,15 @@ public abstract class ShieldFireMixin {
 
         noabuse$burnTickCounter = 0;
         noabuse$burnSecondsRemaining--;
-        self.damage(self.getDamageSources().onFire(), noabuse$burnDamagePerSecond);
+
+        if (noabuse$burnShieldStack != null && !noabuse$burnShieldStack.isEmpty()) {
+            Hand hand = noabuse$burnHand;
+            noabuse$burnShieldStack.damage(noabuse$burnDamagePerSecond, self, e -> e.sendToolBreakStatus(hand));
+        }
+
+        if (noabuse$burnSecondsRemaining <= 0) {
+            noabuse$burnShieldStack = null;
+            noabuse$burnHand = null;
+        }
     }
 }
