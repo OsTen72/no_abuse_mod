@@ -10,6 +10,9 @@ public class NoAbuseMod implements ModInitializer {
 
     @Override
     public void onInitialize() {
-        LOGGER.info("[NoAbuse] Хардкорный ноабуз-мод загружен");
+        // МЕТКА СБОРКИ — меняется при каждой значимой правке, чтобы по
+        // одной строке в логе сразу быть уверенным, какая версия кода
+        // реально загружена, без гадания по датам файлов/папок.
+        LOGGER.info("[NoAbuse] Хардкорный ноабуз-мод загружен (build-tag: DEBUG-2026-08-14-A)");
     }
 }
