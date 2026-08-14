@@ -1,5 +1,6 @@
 package com.mamaika.noabuse.mixin;
 
+import com.mamaika.noabuse.NoAbuseMod;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.BucketItem;
 import net.minecraft.item.ItemStack;
@@ -62,8 +63,18 @@ public abstract class BucketCooldownMixin {
         }
 
         ItemStack resultStack = cir.getReturnValue().getValue();
+
+        // ВРЕМЕННЫЙ ДИАГНОСТИЧЕСКИЙ ЛОГ — сработал ли инжект вообще, и
+        // что реально лежит в resultStack. После разбора — уберём.
+        NoAbuseMod.LOGGER.info(
+                "[NoAbuse][DEBUG] bucket use() fired, result={}, actionResult={}",
+                resultStack.getItem(),
+                cir.getReturnValue().getResult()
+        );
+
         if (resultStack.isOf(Items.BUCKET)) {
             player.getItemCooldownManager().set(Items.BUCKET, 30);
+            NoAbuseMod.LOGGER.info("[NoAbuse][DEBUG] bucket cooldown SET");
         }
     }
 }
